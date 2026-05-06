@@ -18,7 +18,6 @@ class Triangulation:
     edges_neu: list
 
     def plot(self):
-        print(self.triangles)
         fig, ax = plt.subplots()
         ax.triplot(list(map(lambda x: x[0], self.points)), list(map(lambda x: x[1], self.points)), self.triangles)
         plt.show()
@@ -27,7 +26,7 @@ class Triangulation:
         # double counts!
         h_max = 0
         for triangle in self.triangles:
-            for edge in zip(triangle, triangle[1:] + [triangle[0]]):
+            for edge in zip(triangle, [*triangle[1:], triangle[0]]):
                 p1 = np.asarray(self.points[edge[0]], dtype=np.float32)
                 p2 = np.asarray(self.points[edge[1]], dtype=np.float32)
                 h_max = max(h_max, np.linalg.norm(p2 - p1))
@@ -44,6 +43,8 @@ class Triangulation:
 def funct(x, y):
     return 15 * x * y * (1 - 1/4 * x ** 2 - y ** 2) - 1/2 * x ** 3 * y - 8 * x * y ** 3
     
+def exact(x, y):
+    return x * y * (1 - 1/4 * x ** 2 - y ** 2) ** 2
     
 def poisson(triangulation, f):
     areas = []
@@ -56,16 +57,17 @@ def poisson(triangulation, f):
         M = np.array(tuple([1, *triangulation.points[point]] for point in triangle))
         M_inv = np.linalg.inv(M)
         area = 1/2 * abs(np.linalg.det(M))
+        areas.append(area)
 
         # Calculate A
         for (k1, point), (k2, point2) in itertools.product(enumerate(triangle), enumerate(triangle)):
             # A symmetric, so don't have to waste computations
             if point < point2:
-                a = area * (M[1][k1] * M[1][k2] + M[2][k1] * M[2][k2])
+                a = area * (M_inv[1][k1] * M_inv[1][k2] + M_inv[2][k1] * M_inv[2][k2])
                 A[point, point2] += a
                 A[point2, point] += a
             elif point == point2:
-                A[point, point] += area * (M[1][k1] * M[1][k2] + M[2][k1] * M[2][k2])
+                A[point, point] += area * (M_inv[1][k1] * M_inv[1][k2] + M_inv[2][k1] * M_inv[2][k2])
 
         # Calculate b
         points = [triangulation.points[point] for point in triangle]
@@ -134,6 +136,62 @@ def read_msh(filename):
 if __name__ == "__main__":
     t = Triangulation([(0,0), (3,0), (1,1), (2,1), (1.5, 2), (0,3), (3,3)], [[0,2,5],[0,2,3],[0,1,3],[5,2,4],[2,3,4],[4,5,6],[3,4,6],[1,3,6]], [0,1,5,6], [])
     #t.plot()
-    print(t.get_hmax())
+    t.get_hmax()
     t.inner_points()
     poisson(t, funct)
+    filenames = [f"meshes/elliplse{k : 03d}.msh" for k in range(11)]
+    tri = read_msh("meshes/ellipse07.msh")
+    #tri.plot()
+    A, b, areas = poisson(tri, funct)
+    approx_inner = np.linalg.solve(A, b)
+    Px = list(map(lambda x: x[0], tri.points))
+    Py = list(map(lambda x: x[1], tri.points))
+    N = len(Px)
+    approx = np.zeros((N))
+    approx[tri.inner_points()] = approx_inner
+    sol = [exact(pt[0], pt[1]) for pt in tri.points]
+
+    fig = plt.figure()
+    ax1 = fig.add_subplot(1, 2, 1, projection = "3d")
+    ax1.plot_trisurf(Px, Py, tri.triangles, approx, cmap='viridis')
+    ax1.set_title("approx")
+
+    ax2 = fig.add_subplot(1, 2, 2, projection = "3d")
+    ax2.plot_trisurf(Px, Py, tri.triangles, sol, cmap='viridis')
+    ax2.set_title("sol")
+    #plt.show()
+
+    eps = lambda pt: abs(exact(*tri.points[pt]) - approx[pt]) ** 2
+    error = 0
+    for triangle, area in zip(tri.triangles, areas):
+        error += area * 1/3 * (sum(eps(pt) for pt in triangle))
+    error = np.sqrt(error)
+    
+    filenames = [f"meshes/ellipse{k:02d}.msh" for k in range(11)]
+    triangulations = [read_msh(filename) for filename in filenames]
+    errors = []
+    h_max = []
+
+    for k, tri in enumerate(triangulations):
+        print(k)
+        A, b, areas = poisson(tri, funct)
+        approx_inner = np.linalg.solve(A, b)
+        Px = list(map(lambda x: x[0], tri.points))
+        Py = list(map(lambda x: x[1], tri.points))
+        N = len(Px)
+        approx = np.zeros((N))
+        approx[tri.inner_points()] = approx_inner
+        sol = [exact(pt[0], pt[1]) for pt in tri.points]
+
+        eps = lambda pt: abs(exact(*tri.points[pt]) - approx[pt]) ** 2
+        error = 0
+        for triangle, area in zip(tri.triangles, areas):
+            error += area * 1/3 * (sum(eps(pt) for pt in triangle))
+        errors.append(np.sqrt(error))
+        h_max.append(tri.get_hmax())
+
+    ax3 = fig.add_subplot(2, 2, 3)
+    ax3.loglog(h_max, errors)
+    ax3.invert_xaxis()
+    plt.tight_layout()
+    plt.show()
