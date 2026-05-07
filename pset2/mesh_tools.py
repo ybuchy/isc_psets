@@ -152,11 +152,11 @@ if __name__ == "__main__":
     sol = [exact(pt[0], pt[1]) for pt in tri.points]
 
     fig = plt.figure()
-    ax1 = fig.add_subplot(1, 2, 1, projection = "3d")
+    ax1 = fig.add_subplot(2, 2, 1, projection = "3d")
     ax1.plot_trisurf(Px, Py, tri.triangles, approx, cmap='viridis')
     ax1.set_title("approx")
 
-    ax2 = fig.add_subplot(1, 2, 2, projection = "3d")
+    ax2 = fig.add_subplot(2, 2, 2, projection = "3d")
     ax2.plot_trisurf(Px, Py, tri.triangles, sol, cmap='viridis')
     ax2.set_title("sol")
     #plt.show()
@@ -191,7 +191,11 @@ if __name__ == "__main__":
         h_max.append(tri.get_hmax())
 
     ax3 = fig.add_subplot(2, 2, 3)
-    ax3.loglog(h_max, errors)
+    ax3.loglog(h_max, errors, label="error")
+    ax3.loglog(h_max, list(map(lambda x: .1 * x ** 1, h_max)), label="linear")
+    ax3.loglog(h_max, list(map(lambda x: .1 * x ** 2, h_max)), label="quadratic")
+    ax3.loglog(h_max, list(map(lambda x: .05 * x ** 3, h_max)), label="cubic")
     ax3.invert_xaxis()
+    ax3.legend()
     plt.tight_layout()
     plt.show()
