@@ -23,7 +23,6 @@ class Triangulation:
         plt.show()
 
     def get_hmax(self):
-        # double counts!
         h_max = 0
         for triangle in self.triangles:
             for edge in zip(triangle, [*triangle[1:], triangle[0]]):
@@ -33,10 +32,10 @@ class Triangulation:
         return h_max
 
     def inner_points(self):
-        edges = [set(edge) for triang in self.triangles for edge in itertools.combinations(triang, 2)]
-        edge_counts = {tuple(edge):edges.count(edge) for edge in edges}
-        outer_edges = [edge for edge in edges if edge_counts[tuple(edge)] == 1]
-        outer_points = set(point for edge in outer_edges for point in edge)
+        outer_points = []
+        for edge in np.vstack((self.edges_dir, self.edges_neu)):
+            outer_points.append(edge[0])
+            outer_points.append(edge[1])
         return [k not in outer_points for k in range(len(self.points))]
         
 
@@ -60,6 +59,7 @@ def poisson(triangulation, f):
         areas.append(area)
 
         # Calculate A
+        # k1, k2 local index of points, point and point2 are global ones
         for (k1, point), (k2, point2) in itertools.product(enumerate(triangle), enumerate(triangle)):
             # A symmetric, so don't have to waste computations
             if point < point2:
@@ -71,6 +71,7 @@ def poisson(triangulation, f):
 
         # Calculate b
         points = [triangulation.points[point] for point in triangle]
+        # also works with tuple (x, y) points instead of np array
         midpoint = 1/3 * np.fromiter(map(sum, zip(*points)), dtype='f')
         for point in triangle:
             b[point] += 1/3 * area * f(*midpoint)
@@ -134,14 +135,13 @@ def read_msh(filename):
 
 
 if __name__ == "__main__":
-    t = Triangulation([(0,0), (3,0), (1,1), (2,1), (1.5, 2), (0,3), (3,3)], [[0,2,5],[0,2,3],[0,1,3],[5,2,4],[2,3,4],[4,5,6],[3,4,6],[1,3,6]], [0,1,5,6], [])
-    #t.plot()
+    t = Triangulation([(0,0), (3,0), (1,1), (2,1), (1.5, 2), (0,3), (3,3)], [[0,2,5],[0,2,3],[0,1,3],[5,2,4],[2,3,4],[4,5,6],[3,4,6],[1,3,6]], [[0, 1], [0, 5], [5, 6], [6, 1]], np.zeros([0, 2], dtype=int))
+    t.plot()
     t.get_hmax()
     t.inner_points()
     poisson(t, funct)
-    filenames = [f"meshes/elliplse{k : 03d}.msh" for k in range(11)]
-    tri = read_msh("meshes/ellipse07.msh")
-    #tri.plot()
+    tri = read_msh("meshes/ellipse06.msh")
+    tri.plot()
     A, b, areas = poisson(tri, funct)
     approx_inner = np.linalg.solve(A, b)
     Px = list(map(lambda x: x[0], tri.points))
@@ -159,13 +159,8 @@ if __name__ == "__main__":
     ax2 = fig.add_subplot(2, 2, 2, projection = "3d")
     ax2.plot_trisurf(Px, Py, tri.triangles, sol, cmap='viridis')
     ax2.set_title("sol")
-    #plt.show()
 
     eps = lambda pt: abs(exact(*tri.points[pt]) - approx[pt]) ** 2
-    error = 0
-    for triangle, area in zip(tri.triangles, areas):
-        error += area * 1/3 * (sum(eps(pt) for pt in triangle))
-    error = np.sqrt(error)
     
     filenames = [f"meshes/ellipse{k:02d}.msh" for k in range(11)]
     triangulations = [read_msh(filename) for filename in filenames]
@@ -183,7 +178,6 @@ if __name__ == "__main__":
         approx[tri.inner_points()] = approx_inner
         sol = [exact(pt[0], pt[1]) for pt in tri.points]
 
-        eps = lambda pt: abs(exact(*tri.points[pt]) - approx[pt]) ** 2
         error = 0
         for triangle, area in zip(tri.triangles, areas):
             error += area * 1/3 * (sum(eps(pt) for pt in triangle))
